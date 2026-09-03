@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>방치형 RPG - Idle Battle</title>
+<style>
+  :root{--bg:#0f1220;--panel:#1a1f33;--panel2:#232a45;--text:#e8ecff;--muted:#8d95b8;--gold:#ffd54a;--hp:#ff5b6e;--hp2:#7cf59a;--accent:#6c8cff;--boss:#ff4d6d;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Pretendard","Noto Sans KR",system-ui,sans-serif;min-height:100vh}
+  .wrap{max-width:1100px;margin:0 auto;padding:12px}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border-radius:12px;padding:10px 16px;margin-bottom:10px}
+  .top .stage{font-size:20px;font-weight:800}
+  .top .best{color:var(--muted);font-size:13px;margin-left:8px}
+  .gold{font-size:22px;font-weight:800;color:var(--gold);display:flex;align-items:center;gap:6px}
+  .gold .coin{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff3a8,#f0b400 60%,#9a6d00);display:inline-block;box-shadow:0 0 6px #ffd54a88}
+  .scene{position:relative;background:var(--panel);border-radius:12px;overflow:hidden}
+  canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+  .bars{position:absolute;left:0;right:0;top:10px;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none}
+  .bar{width:38%;}
+  .bar .name{font-size:13px;font-weight:700;margin-bottom:3px;text-shadow:0 1px 2px #000}
+  .bar .track{height:14px;background:#00000088;border-radius:7px;overflow:hidden;border:1px solid #00000066}
+  .bar .fill{height:100%;background:linear-gradient(#ff7b8a,#e0304a);transition:width .12s}
+  .bar.enemy .fill{background:linear-gradient(#ff9a5b,#e0562f)}
+  .bar.enemy.boss .fill{background:linear-gradient(#ff4d6d,#8e0f2c)}
+  .bar .txt{font-size:11px;color:#fff;text-shadow:0 1px 2px #000;margin-top:2px}
+  .bar.enemy{text-align:right}
+  .banner{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:28px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000;pointer-events:none;opacity:0;transition:opacity .3s}
+  .banner.show{opacity:1}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border-radius:12px;padding:14px}
+  .panel h3{margin:0 0 10px;font-size:15px;color:var(--muted);letter-spacing:.5px}
+  .stat{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel2);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .stat .lbl{font-weight:700}
+  .stat .val{color:var(--muted);font-size:13px}
+  .stat .val b{color:var(--text)}
+  button{cursor:pointer;border:none;border-radius:8px;padding:8px 12px;font-weight:700;color:#fff;background:var(--accent);font-family:inherit;transition:transform .05s,filter .1s}
+  button:hover{filter:brightness(1.1)}
+  button:active{transform:scale(.97)}
+  button:disabled{background:#3a4060;color:#8d95b8;cursor:not-allowed}
+  .buy{min-width:120px;text-align:center}
+  .buy small{display:block;font-weight:600;font-size:11px;opacity:.9}
+  .bossbtn{width:100%;padding:14px;font-size:17px;background:linear-gradient(135deg,#ff4d6d,#a3123a);margin-top:4px;box-shadow:0 0 14px #ff4d6d55}
+  .bossbtn.cancel{background:#555b7a;box-shadow:none}
+  .bossbtn:disabled{background:#3a4060;box-shadow:none}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .row button{flex:1}
+  .info{font-size:12px;color:var(--muted);line-height:1.6;margin-top:8px}
+  .debug{margin-top:10px}
+  .debug summary{cursor:pointer;font-weight:800;color:#ffb347;padding:12px 14px;background:var(--panel);border-radius:12px;list-style:none;display:flex;justify-content:space-between}
+  .debug summary::-webkit-details-marker{display:none}
+  .debug[open] summary{border-radius:12px 12px 0 0}
+  .debug .body{background:var(--panel);border-radius:0 0 12px 12px;padding:12px 14px;border-top:1px solid #ffffff11}
+  .dbg{display:grid;grid-template-columns:150px 1fr 90px;align-items:center;gap:10px;margin-bottom:10px}
+  .dbg label{font-weight:700;font-size:14px}
+  .dbg input[type=range]{width:100%;accent-color:#ffb347}
+  .dbg input[type=number]{width:100%;background:var(--panel2);color:#fff;border:1px solid #ffffff22;border-radius:6px;padding:6px 8px;font-family:inherit;font-weight:700}
+  .dbg .cur{grid-column:2/4;font-size:12px;color:var(--muted);margin-top:-6px}
+  .log{font-size:12px;color:var(--muted);max-height:100px;overflow:auto;background:#00000033;border-radius:8px;padding:8px;margin-top:8px;line-height:1.6}
+  .log .g{color:var(--gold)}
+  .log .b{color:var(--boss)}
+  .log .c{color:var(--hp2)}
+  .chip{display:inline-block;background:#ffffff14;border-radius:6px;padding:2px 7px;font-size:11px;color:var(--muted);margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><span class="stage" id="stageLbl">스테이지 1</span><span class="best" id="bestLbl">최고 클리어: 0</span><span class="chip" id="modeChip">일반 전투</span></div>
+    <div class="gold"><span class="coin"></span><span id="goldLbl">0</span></div>
+  </div>
+
+  <div class="scene">
+    <canvas id="cv" width="800" height="340"></canvas>
+    <div class="bars">
+      <div class="bar player"><div class="name">플레이어</div><div class="track"><div class="fill" id="pFill" style="width:100%"></div></div><div class="txt" id="pHpTxt"></div></div>
+      <div class="bar enemy" id="eBar"><div class="name" id="eName">슬라임</div><div class="track"><div class="fill" id="eFill" style="width:100%"></div></div><div class="txt" id="eHpTxt"></div></div>
+    </div>
+    <div class="banner" id="banner"></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>능력치 강화</h3>
+      <div class="stat">
+        <div><div class="lbl">⚔️ 공격력 <span class="chip" id="atkLv">Lv.0</span></div><div class="val"><b id="atkVal">0</b> <span id="atkBase"></span></div></div>
+        <button class="buy" id="buyAtk">강화<small id="atkCost"></small></button>
+      </div>
+      <div class="stat">
+        <div><div class="lbl">❤️ 체력 <span class="chip" id="hpLv">Lv.0</span></div><div class="val"><b id="hpVal">0</b> <span id="hpBase"></span></div></div>
+        <button class="buy" id="buyHp">강화<small id="hpCost"></small></button>
+      </div>
+      <div class="stat">
+        <div><div class="lbl">💚 체력회복 <span class="chip" id="regLv">Lv.0</span></div><div class="val"><b id="regVal">0</b>/초 <span id="regBase"></span></div></div>
+        <button class="buy" id="buyReg">강화<small id="regCost"></small></button>
+      </div>
+      <div class="row">
+        <button id="buyAtk10" style="background:#3f4a7a">공격력 x10</button>
+        <button id="buyHp10" style="background:#3f4a7a">체력 x10</button>
+        <button id="buyReg10" style="background:#3f4a7a">회복 x10</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>스테이지</h3>
+      <div class="stat"><div><div class="lbl">일반 적</div><div class="val" id="normalInfo"></div></div></div>
+      <div class="stat"><div><div class="lbl" style="color:var(--boss)">보스 (일반 적의 10배)</div><div class="val" id="bossInfo"></div></div></div>
+      <button class="bossbtn" id="bossBtn">👹 보스 도전</button>
+      <div class="row" style="margin-top:8px">
+        <button id="prevStage" style="background:#3f4a7a">◀ 이전 스테이지</button>
+        <button id="nextStage" style="background:#3f4a7a">다음 스테이지 ▶</button>
+      </div>
+      <div class="info">
+        · 적을 <b>공격</b>할 때마다 골드 획득, <b>처치</b> 시 공격 골드의 <b>10배</b><br>
+        · 보스 <b>최초 클리어</b> 시 일반 처치의 <b>10배</b>, 재클리어는 일반 처치와 동일<br>
+        · 스테이지가 오를수록 적이 강해지고 골드 획득량도 증가
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <details class="debug" id="debugBox">
+    <summary><span>🛠 디버그 창</span><span style="color:var(--muted);font-weight:600;font-size:12px">클릭하여 열기/닫기</span></summary>
+    <div class="body">
+      <div class="dbg"><label>공격력 배율</label><input type="range" id="mAtkR" min="0.1" max="100" step="0.1" value="1"><input type="number" id="mAtk" min="0.01" step="0.1" value="1"><div class="cur" id="mAtkCur"></div></div>
+      <div class="dbg"><label>체력회복 배율</label><input type="range" id="mRegR" min="0.1" max="100" step="0.1" value="1"><input type="number" id="mReg" min="0.01" step="0.1" value="1"><div class="cur" id="mRegCur"></div></div>
+      <div class="dbg"><label>체력 배율</label><input type="range" id="mHpR" min="0.1" max="100" step="0.1" value="1"><input type="number" id="mHp" min="0.01" step="0.1" value="1"><div class="cur" id="mHpCur"></div></div>
+      <div class="dbg"><label>골드 획득량 배율</label><input type="range" id="mGoldR" min="0.1" max="100" step="0.1" value="1"><input type="number" id="mGold" min="0.01" step="0.1" value="1"><div class="cur" id="mGoldCur"></div></div>
+      <div class="row">
+        <button id="dbgReset" style="background:#555b7a">배율 초기화</button>
+        <button id="dbgGold" style="background:#8a6d1a">골드 +10,000</button>
+        <button id="dbgWipe" style="background:#7a2c3a">세이브 삭제</button>
+      </div>
+      <div class="info">배율은 즉시 적용되며 저장됩니다. 표시된 공격력/체력/회복은 배율이 반영된 최종 값입니다.</div>
+    </div>
+  </details>
+</div>
+
+<script>
+// ================= 픽셀 아트 스프라이트 =================
+const PAL = {
+  '.':null,'k':'#1b1b2a','s':'#f6c9a0','a':'#c9d1e6','A':'#7d879e','r':'#e63946','b':'#3a63d6','B':'#243f8f','w':'#ffffff','y':'#ffd54a','Y':'#c48f00','o':'#ff8c3a',
+  'g':'#52c76a','G':'#8ff0a0','p':'#7b3fbf','P':'#a86ae6','h':'#5f2c93',
+};
+const KNIGHT = [
+"......kkkk......",
+".....krrrrk.....",
+"....kaaaaaak....",
+"....kaAAAAak....",
+"....kassssak....",
+"....kaksskak....",
+"....kassssak....",
+".....kaaaak..k..",
+"....kkAbbAkkkyk.",
+"...kaAAbbAAakyk.",
+"...kakAbbbAkkyk.",
+"...kk.AbbbA..y..",
+"......ABBBA..y..",
+".....kAAkAAk.k..",
+".....kAAkAAk....",
+".....kkk.kkk....",
+];
+const SLIME = [
+"................",
+"................",
+"................",
+".....kkkkkk.....",
+"...kkggggggkk...",
+"..kgggGGGGgggk..",
+".kggGGGGGGGGggk.",
+".kgGGkGGGGkGGgk.",
+".kgGGwGGGGwGGgk.",
+"kgGGGGGGGGGGGGgk",
+"kgGGGGGkkkGGGGgk",
+"kgGGGGGGGGGGGGgk",
+".kgGGGGGGGGGGgk.",
+".kggGGGGGGGGggk.",
+"..kkggggggggkk..",
+"....kkkkkkkk....",
+];
+const DEMON = [
+".k....kkkk....k.",
+"kyk..kppppk..kyk",
+".kyk.kppppk.kyk.",
+"..kykppppppkyk..",
+"...kppppppppk...",
+"..kppPPPPPPppk..",
+"..kpPrPPPPrPpk..",
+"..kpPPPPPPPPpk..",
+"..kppPwwwwPppk..",
+"...kppPPPPppk...",
+"..kkkppppppkkk..",
+".kppkppppppkppk.",
+".kpk.kppppk.kpk.",
+".kk..kppppk..kk.",
+".....kk..kk.....",
+"....kkk..kkk....",
+];
+// 슬라임 색 변형 (스테이지별)
+const SLIME_TINTS = [
+  {g:'#52c76a',G:'#8ff0a0',name:'슬라임'},
+  {g:'#3a8fd6',G:'#7cc6ff',name:'블루 슬라임'},
+  {g:'#d64a3a',G:'#ff8a7c',name:'레드 슬라임'},
+  {g:'#b07ad6',G:'#dcb4ff',name:'퍼플 슬라임'},
+  {g:'#d6a13a',G:'#ffe07c',name:'골드 슬라임'},
+  {g:'#555b7a',G:'#a4abcf',name:'다크 슬라임'},
+];
+function makeSprite(rows, override){
+  const c=document.createElement('canvas');c.width=16;c.height=16;
+  const x=c.getContext('2d');
+  rows.forEach((row,y)=>{[...row].forEach((ch,i)=>{const col=(override&&override[ch])||PAL[ch];if(col){x.fillStyle=col;x.fillRect(i,y,1,1);}});});
+  return c;
+}
+const SPR = { knight:makeSprite(KNIGHT), demon:makeSprite(DEMON), slimes:SLIME_TINTS.map(t=>makeSprite(SLIME,t)) };
+
+// ================= 게임 상태 =================
+const SAVE_KEY='idleBattleSave_v1';
+const S = {
+  gold:0, stage:1, best:0,
+  lv:{atk:0,hp:0,reg:0},
+  mult:{atk:1,reg:1,hp:1,gold:1},
+  pHp:0, boss:false, clearedBoss:{},
+};
+const B = { // 전투 런타임
+  eHp:0,eMax:0,eAtk:0,eName:'',eSprite:null,eBoss:false,
+  pTimer:0,eTimer:0,pDead:0,eDead:0,
+  pLunge:0,eLunge:0,pFlash:0,eFlash:0,
+  floats:[], shake:0, t:0,
+};
+const P_ATK_INT=0.8, E_ATK_INT=1.1;
+
+// ---- 공식 ----
+const baseAtk=()=>5+S.lv.atk*3;
+const baseHp=()=>100+S.lv.hp*25;
+const baseReg=()=>1+S.lv.reg*0.8;
+const atk=()=>baseAtk()*S.mult.atk;
+const maxHp=()=>baseHp()*S.mult.hp;
+const reg=()=>baseReg()*S.mult.reg;
+const costAtk=()=>Math.floor(10*Math.pow(1.13,S.lv.atk));
+const costHp=()=>Math.floor(10*Math.pow(1.13,S.lv.hp));
+const costReg=()=>Math.floor(15*Math.pow(1.16,S.lv.reg));
+const enemyHp=s=>Math.floor(30*Math.pow(1.32,s-1)+(s-1)*10);
+const enemyAtk=s=>Math.floor(3*Math.pow(1.22,s-1)+(s-1));
+const hitGold=s=>Math.max(1,Math.floor((1+(s-1)*0.6)*Math.pow(1.18,s-1)));
+const killGold=s=>hitGold(s)*10;
+const bossFirstGold=s=>killGold(s)*10;
+
+function fmt(n){
+  if(n<1000)return Math.floor(n).toLocaleString();
+  const u=['','K','M','B','T','Qa','Qi','Sx','Sp','Oc','No','Dc'];let i=0;
+  while(n>=1000&&i<u.length-1){n/=1000;i++;}
+  return n.toFixed(n<10?2:n<100?1:0)+u[i];
+}
+
+// ---- 저장 ----
+function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({gold:S.gold,stage:S.stage,best:S.best,lv:S.lv,mult:S.mult,clearedBoss:S.clearedBoss}));}catch(e){}}
+function load(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d)return;Object.assign(S,{gold:d.gold||0,stage:d.stage||1,best:d.best||0});Object.assign(S.lv,d.lv||{});Object.assign(S.mult,d.mult||{});S.clearedBoss=d.clearedBoss||{};}catch(e){}}
+
+// ---- 적 생성 ----
+function spawnEnemy(boss){
+  const s=S.stage;B.eBoss=boss;
+  const tint=SLIME_TINTS[(s-1)%SLIME_TINTS.length];
+  if(boss){B.eMax=enemyHp(s)*10;B.eAtk=enemyAtk(s)*10;B.eName='보스 '+(['거대 마왕','심연의 군주','화염 악마','암흑 기사','파멸의 눈'][(s-1)%5])+' Lv.'+s;B.eSprite=SPR.demon;}
+  else{B.eMax=enemyHp(s);B.eAtk=enemyAtk(s);B.eName=tint.name+' Lv.'+s;B.eSprite=SPR.slimes[(s-1)%SPR.slimes.length];}
+  B.eHp=B.eMax;B.eDead=0;B.eTimer=0;B.pTimer=0;B.eFlash=0;B.eLunge=0;
+  const bar=document.getElementById('eBar');bar.classList.toggle('boss',boss);
+  document.getElementById('eName').textContent=B.eName;
+  document.getElementById('modeChip').textContent=boss?'보스 전투':'일반 전투';
+}
+function addFloat(x,y,text,color,size){B.floats.push({x,y,text,color,size:size||18,life:1,vy:-40});}
+function log(html){const el=document.getElementById('log');const d=document.createElement('div');d.innerHTML=html;el.prepend(d);while(el.children.length>30)el.lastChild.remove();}
+function banner(txt,ms){const b=document.getElementById('banner');b.textContent=txt;b.classList.add('show');clearTimeout(b._t);b._t=setTimeout(()=>b.classList.remove('show'),ms||1500);}
+
+function gainGold(amount,x,y,big){
+  const g=Math.floor(amount*S.mult.gold);
+  S.gold+=g;addFloat(x,y,'+'+fmt(g)+' G','#ffd54a',big?24:14);return g;
+}
+
+// ---- 전투 ----
+function playerAttack(){
+  const dmg=atk();B.eHp-=dmg;B.eFlash=0.15;B.pLunge=0.25;
+  addFloat(560+Math.random()*30,150,fmt(dmg),'#fff',20);
+  gainGold(hitGold(S.stage),560,110,false);
+  if(B.eHp<=0){B.eHp=0;B.eDead=0.8;B.shake=0.2;
+    if(B.eBoss){
+      const first=!S.clearedBoss[S.stage];
+      const g=gainGold(first?bossFirstGold(S.stage):killGold(S.stage),560,90,true);
+      S.clearedBoss[S.stage]=true;
+      if(S.stage>S.best)S.best=S.stage;
+      log('<span class="b">보스 클리어!</span> 스테이지 '+S.stage+(first?' <span class="g">최초 클리어 보너스 +'+fmt(g)+' G</span>':' +'+fmt(g)+' G'));
+      banner(first?'🏆 보스 최초 클리어! 다음 스테이지로':'보스 클리어! 다음 스테이지로',2000);
+      S.stage++;S.boss=false;
+    }else{
+      const g=gainGold(killGold(S.stage),560,90,true);
+      log('처치: '+B.eName+' <span class="g">+'+fmt(g)+' G</span>');
+    }
+    save();
+  }
+}
+function enemyAttack(){
+  const dmg=B.eAtk;S.pHp-=dmg;B.pFlash=0.15;B.eLunge=0.25;
+  addFloat(180+Math.random()*30,150,'-'+fmt(dmg),'#ff5b6e',18);
+  if(S.pHp<=0){S.pHp=0;B.pDead=3;B.shake=0.3;
+    log('<span class="b">플레이어 쓰러짐!</span> 3초 후 부활'+(B.eBoss?' (보스 도전 실패)':''));
+    banner('💀 쓰러졌다... 3초 후 부활',2500);
+    if(B.eBoss){S.boss=false;}
+  }
+}
+function update(dt){
+  B.t+=dt;
+  if(B.shake>0)B.shake-=dt;
+  if(B.pLunge>0)B.pLunge-=dt;if(B.eLunge>0)B.eLunge-=dt;
+  if(B.pFlash>0)B.pFlash-=dt;if(B.eFlash>0)B.eFlash-=dt;
+  // 부활
+  if(B.pDead>0){B.pDead-=dt;if(B.pDead<=0){S.pHp=maxHp();spawnEnemy(false);log('<span class="c">부활!</span>');}}
+  else{
+    S.pHp=Math.min(maxHp(),S.pHp+reg()*dt);
+    if(B.eDead>0){B.eDead-=dt;if(B.eDead<=0)spawnEnemy(S.boss);}
+    else{
+      B.pTimer+=dt;B.eTimer+=dt;
+      if(B.pTimer>=P_ATK_INT){B.pTimer-=P_ATK_INT;playerAttack();}
+      if(B.eDead<=0&&B.pDead<=0&&B.eTimer>=E_ATK_INT){B.eTimer-=E_ATK_INT;enemyAttack();}
+    }
+  }
+  for(const f of B.floats){f.life-=dt*0.9;f.y+=f.vy*dt;}
+  B.floats=B.floats.filter(f=>f.life>0);
+}
+
+// ---- 렌더 ----
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');ctx.imageSmoothingEnabled=false;
+function drawSprite(img,x,y,scale,flipX,flash){
+  ctx.save();ctx.translate(x,y);if(flipX)ctx.scale(-1,1);
+  ctx.drawImage(img,-8*scale,-16*scale,16*scale,16*scale);
+  if(flash){ctx.globalCompositeOperation='source-atop';ctx.fillStyle='rgba(255,255,255,.85)';ctx.fillRect(-8*scale,-16*scale,16*scale,16*scale);}
+  ctx.restore();
+}
+function render(){
+  const W=cv.width,H=cv.height;
+  ctx.save();
+  if(B.shake>0)ctx.translate((Math.random()-.5)*8,(Math.random()-.5)*8);
+  // 배경
+  const boss=B.eBoss;
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,boss?'#2a0f2e':'#1e2a5a');sky.addColorStop(1,boss?'#5a1a3a':'#4a6fb5');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+  // 별/구름
+  ctx.fillStyle='rgba(255,255,255,.7)';for(let i=0;i<20;i++){const x=(i*137+Math.floor(B.t*3))%W,y=(i*53)%120;ctx.fillRect(x,y,2,2);}
+  ctx.fillStyle='rgba(255,255,255,.12)';
+  for(let i=0;i<4;i++){const x=((i*230+B.t*12)%(W+200))-100,y=50+i*25;ctx.fillRect(x,y,90,14);ctx.fillRect(x+20,y-10,50,12);}
+  // 산
+  ctx.fillStyle=boss?'#3b1030':'#243766';
+  for(let i=0;i<6;i++){const x=i*160-40;ctx.beginPath();ctx.moveTo(x,260);ctx.lineTo(x+80,150+(i%2)*30);ctx.lineTo(x+160,260);ctx.fill();}
+  // 땅
+  ctx.fillStyle=boss?'#3a2430':'#2f6b3a';ctx.fillRect(0,250,W,H-250);
+  ctx.fillStyle=boss?'#2a1822':'#255a2f';ctx.fillRect(0,262,W,H-262);
+  ctx.fillStyle=boss?'#4a2e3a':'#3e8a4a';for(let i=0;i<W;i+=40)ctx.fillRect(i+(i%80?10:0),252,20,4);
+  // 그림자
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath();ctx.ellipse(200,262,45,10,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(590,262,boss?70:45,boss?14:10,0,0,Math.PI*2);ctx.fill();
+  // 플레이어
+  const bob=Math.sin(B.t*4)*3;
+  const pl=B.pLunge>0?Math.sin(B.pLunge/0.25*Math.PI)*60:0;
+  if(B.pDead>0){ctx.save();ctx.translate(200,262);ctx.rotate(-Math.PI/2);ctx.globalAlpha=.6;drawSprite(SPR.knight,0,0,5,false,false);ctx.restore();}
+  else drawSprite(SPR.knight,200+pl,262+bob,5,false,B.pFlash>0);
+  // 적
+  if(B.eDead>0){ctx.save();ctx.globalAlpha=B.eDead/0.8;const sc=(boss?8:5)*(0.6+B.eDead/0.8*0.4);drawSprite(B.eSprite,590,262,sc,true,true);ctx.restore();}
+  else{const ebob=Math.sin(B.t*3+1)*3;const el=B.eLunge>0?Math.sin(B.eLunge/0.25*Math.PI)*60:0;drawSprite(B.eSprite,590-el,262+ebob,boss?8:5,true,B.eFlash>0);}
+  // 플로팅 텍스트
+  for(const f of B.floats){ctx.globalAlpha=Math.max(0,f.life);ctx.font='900 '+f.size+'px sans-serif';ctx.fillStyle='#000';ctx.fillText(f.text,f.x+2,f.y+2);ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y);}
+  ctx.globalAlpha=1;
+  // 부활 카운트
+  if(B.pDead>0){ctx.font='900 40px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(Math.ceil(B.pDead),200,150);ctx.textAlign='left';}
+  ctx.restore();
+}
+
+// ---- UI ----
+const $=id=>document.getElementById(id);
+function updateUI(){
+  $('goldLbl').textContent=fmt(S.gold);
+  $('stageLbl').textContent='스테이지 '+S.stage;
+  $('bestLbl').textContent='최고 클리어: '+S.best;
+  $('pFill').style.width=(S.pHp/maxHp()*100)+'%';
+  $('pHpTxt').textContent=fmt(S.pHp)+' / '+fmt(maxHp())+'  (+'+fmt(reg())+'/s)';
+  $('eFill').style.width=(B.eMax?B.eHp/B.eMax*100:0)+'%';
+  $('eHpTxt').textContent=fmt(B.eHp)+' / '+fmt(B.eMax);
+  $('atkLv').textContent='Lv.'+S.lv.atk;$('hpLv').textContent='Lv.'+S.lv.hp;$('regLv').textContent='Lv.'+S.lv.reg;
+  $('atkVal').textContent=fmt(atk());$('hpVal').textContent=fmt(maxHp());$('regVal').textContent=fmt(reg());
+  $('atkBase').textContent=S.mult.atk!==1?'(기본 '+fmt(baseAtk())+' ×'+S.mult.atk+')':'';
+  $('hpBase').textContent=S.mult.hp!==1?'(기본 '+fmt(baseHp())+' ×'+S.mult.hp+')':'';
+  $('regBase').textContent=S.mult.reg!==1?'(기본 '+fmt(baseReg())+' ×'+S.mult.reg+')':'';
+  $('atkCost').textContent=fmt(costAtk())+' G';$('hpCost').textContent=fmt(costHp())+' G';$('regCost').textContent=fmt(costReg())+' G';
+  $('buyAtk').disabled=S.gold<costAtk();$('buyHp').disabled=S.gold<costHp();$('buyReg').disabled=S.gold<costReg();
+  const s=S.stage;
+  $('normalInfo').innerHTML='HP <b>'+fmt(enemyHp(s))+'</b> · 공격 <b>'+fmt(enemyAtk(s))+'</b> · 타격 <b class="g" style="color:var(--gold)">'+fmt(hitGold(s)*S.mult.gold)+' G</b> · 처치 <b style="color:var(--gold)">'+fmt(killGold(s)*S.mult.gold)+' G</b>';
+  const first=!S.clearedBoss[s];
+  $('bossInfo').innerHTML='HP <b>'+fmt(enemyHp(s)*10)+'</b> · 공격 <b>'+fmt(enemyAtk(s)*10)+'</b> · 클리어 <b style="color:var(--gold)">'+fmt((first?bossFirstGold(s):killGold(s))*S.mult.gold)+' G</b>'+(first?' <span class="chip" style="color:#ffd54a">최초 클리어 10배!</span>':' <span class="chip">재클리어</span>');
+  const bb=$('bossBtn');
+  if(S.boss||B.eBoss){bb.textContent='보스전 포기 (일반 전투로)';bb.classList.add('cancel');}
+  else{bb.textContent='👹 보스 도전  (스테이지 '+s+')';bb.classList.remove('cancel');}
+  bb.disabled=B.pDead>0;
+  $('prevStage').disabled=s<=1;$('nextStage').disabled=!S.clearedBoss[s];
+  $('mAtkCur').textContent='→ 공격력 '+fmt(baseAtk())+' × '+S.mult.atk+' = '+fmt(atk());
+  $('mRegCur').textContent='→ 체력회복 '+fmt(baseReg())+' × '+S.mult.reg+' = '+fmt(reg())+'/초';
+  $('mHpCur').textContent='→ 체력 '+fmt(baseHp())+' × '+S.mult.hp+' = '+fmt(maxHp());
+  $('mGoldCur').textContent='→ 타격당 '+fmt(hitGold(s))+' × '+S.mult.gold+' = '+fmt(hitGold(s)*S.mult.gold)+' G';
+}
+function buy(kind,times){
+  const cost={atk:costAtk,hp:costHp,reg:costReg}[kind];let n=0;
+  for(let i=0;i<times;i++){const c=cost();if(S.gold<c)break;S.gold-=c;S.lv[kind]++;n++;}
+  if(n>0){if(kind==='hp'){/* 최대체력 상승분만큼 현재체력도 증가 */S.pHp=Math.min(maxHp(),S.pHp+25*S.mult.hp*n);}save();}
+}
+$('buyAtk').onclick=()=>buy('atk',1);$('buyHp').onclick=()=>buy('hp',1);$('buyReg').onclick=()=>buy('reg',1);
+$('buyAtk10').onclick=()=>buy('atk',10);$('buyHp10').onclick=()=>buy('hp',10);$('buyReg10').onclick=()=>buy('reg',10);
+$('bossBtn').onclick=()=>{
+  if(B.pDead>0)return;
+  if(S.boss||B.eBoss){S.boss=false;spawnEnemy(false);log('보스전 포기');}
+  else{S.boss=true;spawnEnemy(true);log('<span class="b">보스 도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1500);}
+};
+$('prevStage').onclick=()=>{if(S.stage>1){S.stage--;S.boss=false;spawnEnemy(false);save();}};
+$('nextStage').onclick=()=>{if(S.clearedBoss[S.stage]){S.stage++;S.boss=false;spawnEnemy(false);save();}};
+
+// 디버그
+function bindMult(key,numId,rangeId){
+  const num=$(numId),rng=$(rangeId);
+  const apply=v=>{v=Math.max(0.01,parseFloat(v)||1);v=Math.round(v*100)/100;S.mult[key]=v;num.value=v;rng.value=Math.min(100,v);if(key==='hp')S.pHp=Math.min(S.pHp,maxHp());save();};
+  num.oninput=()=>apply(num.value);rng.oninput=()=>apply(rng.value);
+  apply(S.mult[key]);
+}
+$('dbgReset').onclick=()=>{S.mult={atk:1,reg:1,hp:1,gold:1};['atk','reg','hp','gold'].forEach(k=>{$('m'+k[0].toUpperCase()+k.slice(1)).value=1;$('m'+k[0].toUpperCase()+k.slice(1)+'R').value=1;});save();};
+$('dbgGold').onclick=()=>{S.gold+=10000;save();};
+$('dbgWipe').onclick=()=>{if(confirm('세이브를 삭제하고 처음부터 시작할까요?')){localStorage.removeItem(SAVE_KEY);location.reload();}};
+
+// ---- 시작 ----
+load();
+bindMult('atk','mAtk','mAtkR');bindMult('reg','mReg','mRegR');bindMult('hp','mHp','mHpR');bindMult('gold','mGold','mGoldR');
+S.pHp=maxHp();spawnEnemy(false);
+log('게임 시작! 자동으로 전투가 진행됩니다.');
+let last=performance.now(),acc=0;
+function loop(now){
+  let dt=Math.min(0.1,(now-last)/1000);last=now;
+  update(dt);render();updateUI();
+  acc+=dt;if(acc>5){acc=0;save();}
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
