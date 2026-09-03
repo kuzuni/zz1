@@ -123,7 +123,7 @@
         · 적을 <b>공격</b>할 때마다 골드 획득, <b>처치</b> 시 공격 골드의 <b>10배</b><br>
         · 보스 <b>최초 클리어</b> 시 일반 처치의 <b>10배</b>, 재클리어는 일반 처치와 동일<br>
         · 스테이지가 오를수록 적이 강해지고 골드 획득량도 증가<br>
-        · <b>보스 자동도전</b> ON: 체력이 가득 차면 자동으로 보스에 도전, 클리어 시 다음 스테이지 보스로 계속. 보스에게 패배하면 일반 적 1마리 처치 후 재도전
+        · <b>보스 자동도전</b> ON: 항상 보스만 등장 (클리어 시 다음 스테이지 보스, 패배 시 부활 후 같은 보스 재도전)
       </div>
       <div class="log" id="log"></div>
     </div>
@@ -236,7 +236,7 @@ const B = { // 전투 런타임
   eHp:0,eMax:0,eAtk:0,eName:'',eSprite:null,eBoss:false,
   pTimer:0,eTimer:0,pDead:0,eDead:0,
   pLunge:0,eLunge:0,pFlash:0,eFlash:0,
-  floats:[], shake:0, t:0, autoPaused:false,
+  floats:[], shake:0, t:0,
 };
 const E_ATK_INT=1.1, RESPAWN=0.1; // 적 처치 후 다음 적 등장까지(초)
 
@@ -307,7 +307,7 @@ function playerAttack(){
       S.stage++;S.boss=false;
     }else{
       const g=gainGold(killGold(S.stage),560,90,true);
-      log('처치: '+B.eName+' <span class="g">+'+fmt(g)+' G</span>');B.autoPaused=false;
+      log('처치: '+B.eName+' <span class="g">+'+fmt(g)+' G</span>');
     }
     save();
   }
@@ -318,7 +318,7 @@ function enemyAttack(){
   if(S.pHp<=0){S.pHp=0;B.pDead=3;B.shake=0.3;
     log('<span class="b">플레이어 쓰러짐!</span> 3초 후 부활'+(B.eBoss?' (보스 도전 실패)':''));
     banner('💀 쓰러졌다... 3초 후 부활',2500);
-    if(B.eBoss){S.boss=false;B.autoPaused=true;}
+    if(B.eBoss){S.boss=false;}
   }
 }
 function update(dt){
@@ -327,13 +327,10 @@ function update(dt){
   if(B.pLunge>0)B.pLunge-=dt;if(B.eLunge>0)B.eLunge-=dt;
   if(B.pFlash>0)B.pFlash-=dt;if(B.eFlash>0)B.eFlash-=dt;
   // 부활
-  if(B.pDead>0){B.pDead-=dt;if(B.pDead<=0){S.pHp=maxHp();spawnEnemy(false);log('<span class="c">부활!</span>');}}
+  if(B.pDead>0){B.pDead-=dt;if(B.pDead<=0){S.pHp=maxHp();S.boss=S.autoBoss;spawnEnemy(S.boss);log('<span class="c">부활!</span>'+(S.boss?' <span class="b">보스 자동도전!</span>':''));}}
   else{
     S.pHp=Math.min(maxHp(),S.pHp+reg()*dt);
-    if(S.autoBoss&&!B.autoPaused&&!S.boss&&!B.eBoss&&B.eDead<=0&&S.pHp>=maxHp()-1e-9){
-      S.boss=true;spawnEnemy(true);log('<span class="b">보스 자동도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1200);
-    }
-    if(B.eDead>0){B.eDead-=dt;if(B.eDead<=0)spawnEnemy(S.boss);}
+    if(B.eDead>0){B.eDead-=dt;if(B.eDead<=0){if(!S.boss&&S.autoBoss){S.boss=true;log('<span class="b">보스 자동도전!</span> 스테이지 '+S.stage);}spawnEnemy(S.boss);}}
     else{
       B.pTimer+=dt;B.eTimer+=dt;
       const pi=pAtkInt();while(B.pTimer>=pi&&B.eDead<=0){B.pTimer-=pi;playerAttack();}
@@ -419,7 +416,7 @@ function updateUI(){
   else{bb.textContent='👹 보스 도전  (스테이지 '+s+')';bb.classList.remove('cancel');}
   bb.disabled=B.pDead>0;
   const ab=$('autoBossBtn');ab.classList.toggle('on',S.autoBoss);
-  ab.textContent='🔁 보스 자동도전: '+(S.autoBoss?(B.autoPaused?'ON (일반 적 1마리 처치 후 재도전)':'ON'):'OFF');
+  ab.textContent='🔁 보스 자동도전: '+(S.autoBoss?'ON':'OFF');
   $('prevStage').disabled=s<=1;$('nextStage').disabled=!S.clearedBoss[s];
   $('mAtkCur').textContent='→ 공격력 '+fmt(baseAtk())+' × '+S.mult.atk+' = '+fmt(atk());
   $('mSpdCur').textContent='→ 공격속도 '+baseSpd().toFixed(2)+' × '+S.mult.spd+' = '+aps().toFixed(2)+'회/초 (DPS '+fmt(atk()*aps())+')';
@@ -449,10 +446,11 @@ holdBuy('buyAtk10','atk',10);holdBuy('buySpd10','spd',10);holdBuy('buyHp10','hp'
 window.addEventListener('pointerup',()=>document.querySelectorAll('.buy,.row button').forEach(b=>b.dispatchEvent(new Event('pointerup'))));
 $('bossBtn').onclick=()=>{
   if(B.pDead>0)return;
-  if(S.boss||B.eBoss){S.boss=false;spawnEnemy(false);log('보스전 포기');}
+  if(S.boss||B.eBoss){S.boss=false;if(S.autoBoss){S.autoBoss=false;save();log('보스 자동도전 OFF');}spawnEnemy(false);log('보스전 포기');}
   else{S.boss=true;spawnEnemy(true);log('<span class="b">보스 도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1500);}
 };
-$('autoBossBtn').onclick=()=>{S.autoBoss=!S.autoBoss;B.autoPaused=false;save();log('보스 자동도전 '+(S.autoBoss?'<span class="c">ON</span>':'OFF'));};
+$('autoBossBtn').onclick=()=>{S.autoBoss=!S.autoBoss;save();log('보스 자동도전 '+(S.autoBoss?'<span class="c">ON</span>':'OFF'));
+  if(S.autoBoss&&!B.eBoss&&B.pDead<=0){S.boss=true;spawnEnemy(true);log('<span class="b">보스 자동도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1200);}};
 $('prevStage').onclick=()=>{if(S.stage>1){S.stage--;S.boss=false;spawnEnemy(false);save();}};
 $('nextStage').onclick=()=>{if(S.clearedBoss[S.stage]){S.stage++;S.boss=false;spawnEnemy(false);save();}};
 
