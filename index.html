@@ -35,13 +35,15 @@
   .stat .lbl{font-weight:700}
   .stat .val{color:var(--muted);font-size:13px}
   .stat .val b{color:var(--text)}
-  button{cursor:pointer;border:none;border-radius:8px;padding:8px 12px;font-weight:700;color:#fff;background:var(--accent);font-family:inherit;transition:transform .05s,filter .1s}
+  button{cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;border:none;border-radius:8px;padding:8px 12px;font-weight:700;color:#fff;background:var(--accent);font-family:inherit;transition:transform .05s,filter .1s}
   button:hover{filter:brightness(1.1)}
   button:active{transform:scale(.97)}
   button:disabled{background:#3a4060;color:#8d95b8;cursor:not-allowed}
   .buy{min-width:120px;text-align:center}
   .buy small{display:block;font-weight:600;font-size:11px;opacity:.9}
   .bossbtn{width:100%;padding:14px;font-size:17px;background:linear-gradient(135deg,#ff4d6d,#a3123a);margin-top:4px;box-shadow:0 0 14px #ff4d6d55}
+  .autobtn{width:100%;padding:11px;font-size:15px;background:#3f4a7a;margin-top:8px}
+  .autobtn.on{background:linear-gradient(135deg,#2fb36a,#166b3c);box-shadow:0 0 12px #2fb36a55}
   .bossbtn.cancel{background:#555b7a;box-shadow:none}
   .bossbtn:disabled{background:#3a4060;box-shadow:none}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -112,6 +114,7 @@
       <div class="stat"><div><div class="lbl">일반 적</div><div class="val" id="normalInfo"></div></div></div>
       <div class="stat"><div><div class="lbl" style="color:var(--boss)">보스 (일반 적의 10배)</div><div class="val" id="bossInfo"></div></div></div>
       <button class="bossbtn" id="bossBtn">👹 보스 도전</button>
+      <button class="autobtn" id="autoBossBtn">🔁 보스 자동도전: OFF</button>
       <div class="row" style="margin-top:8px">
         <button id="prevStage" style="background:#3f4a7a">◀ 이전 스테이지</button>
         <button id="nextStage" style="background:#3f4a7a">다음 스테이지 ▶</button>
@@ -119,7 +122,8 @@
       <div class="info">
         · 적을 <b>공격</b>할 때마다 골드 획득, <b>처치</b> 시 공격 골드의 <b>10배</b><br>
         · 보스 <b>최초 클리어</b> 시 일반 처치의 <b>10배</b>, 재클리어는 일반 처치와 동일<br>
-        · 스테이지가 오를수록 적이 강해지고 골드 획득량도 증가
+        · 스테이지가 오를수록 적이 강해지고 골드 획득량도 증가<br>
+        · <b>보스 자동도전</b> ON: 체력이 가득 차면 자동으로 보스에 도전, 클리어 시 다음 스테이지 보스로 계속. 보스에게 패배하면 일반 적 1마리 처치 후 재도전
       </div>
       <div class="log" id="log"></div>
     </div>
@@ -226,15 +230,15 @@ const S = {
   gold:0, stage:1, best:0,
   lv:{atk:0,spd:0,hp:0,reg:0},
   mult:{atk:1,spd:1,reg:1,hp:1,gold:1},
-  pHp:0, boss:false, clearedBoss:{},
+  pHp:0, boss:false, autoBoss:false, clearedBoss:{},
 };
 const B = { // 전투 런타임
   eHp:0,eMax:0,eAtk:0,eName:'',eSprite:null,eBoss:false,
   pTimer:0,eTimer:0,pDead:0,eDead:0,
   pLunge:0,eLunge:0,pFlash:0,eFlash:0,
-  floats:[], shake:0, t:0,
+  floats:[], shake:0, t:0, autoPaused:false,
 };
-const E_ATK_INT=1.1;
+const E_ATK_INT=1.1, RESPAWN=0.1; // 적 처치 후 다음 적 등장까지(초)
 
 // ---- 공식 ----
 const baseAtk=()=>5+S.lv.atk*3;
@@ -264,8 +268,8 @@ function fmt(n){
 }
 
 // ---- 저장 ----
-function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({gold:S.gold,stage:S.stage,best:S.best,lv:S.lv,mult:S.mult,clearedBoss:S.clearedBoss}));}catch(e){}}
-function load(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d)return;Object.assign(S,{gold:d.gold||0,stage:d.stage||1,best:d.best||0});Object.assign(S.lv,d.lv||{});Object.assign(S.mult,d.mult||{});S.clearedBoss=d.clearedBoss||{};}catch(e){}}
+function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify({gold:S.gold,stage:S.stage,best:S.best,lv:S.lv,mult:S.mult,clearedBoss:S.clearedBoss,autoBoss:S.autoBoss}));}catch(e){}}
+function load(){try{const d=JSON.parse(localStorage.getItem(SAVE_KEY));if(!d)return;Object.assign(S,{gold:d.gold||0,stage:d.stage||1,best:d.best||0});Object.assign(S.lv,d.lv||{});Object.assign(S.mult,d.mult||{});S.clearedBoss=d.clearedBoss||{};S.autoBoss=!!d.autoBoss;}catch(e){}}
 
 // ---- 적 생성 ----
 function spawnEnemy(boss){
@@ -292,7 +296,7 @@ function playerAttack(){
   const dmg=atk();B.eHp-=dmg;B.eFlash=0.15;B.pLunge=0.25;
   addFloat(560+Math.random()*30,150,fmt(dmg),'#fff',20);
   gainGold(hitGold(S.stage),560,110,false);
-  if(B.eHp<=0){B.eHp=0;B.eDead=0.8;B.shake=0.2;
+  if(B.eHp<=0){B.eHp=0;B.eDead=RESPAWN;B.shake=0.2;
     if(B.eBoss){
       const first=!S.clearedBoss[S.stage];
       const g=gainGold(first?bossFirstGold(S.stage):killGold(S.stage),560,90,true);
@@ -303,7 +307,7 @@ function playerAttack(){
       S.stage++;S.boss=false;
     }else{
       const g=gainGold(killGold(S.stage),560,90,true);
-      log('처치: '+B.eName+' <span class="g">+'+fmt(g)+' G</span>');
+      log('처치: '+B.eName+' <span class="g">+'+fmt(g)+' G</span>');B.autoPaused=false;
     }
     save();
   }
@@ -314,7 +318,7 @@ function enemyAttack(){
   if(S.pHp<=0){S.pHp=0;B.pDead=3;B.shake=0.3;
     log('<span class="b">플레이어 쓰러짐!</span> 3초 후 부활'+(B.eBoss?' (보스 도전 실패)':''));
     banner('💀 쓰러졌다... 3초 후 부활',2500);
-    if(B.eBoss){S.boss=false;}
+    if(B.eBoss){S.boss=false;B.autoPaused=true;}
   }
 }
 function update(dt){
@@ -326,6 +330,9 @@ function update(dt){
   if(B.pDead>0){B.pDead-=dt;if(B.pDead<=0){S.pHp=maxHp();spawnEnemy(false);log('<span class="c">부활!</span>');}}
   else{
     S.pHp=Math.min(maxHp(),S.pHp+reg()*dt);
+    if(S.autoBoss&&!B.autoPaused&&!S.boss&&!B.eBoss&&B.eDead<=0&&S.pHp>=maxHp()-1e-9){
+      S.boss=true;spawnEnemy(true);log('<span class="b">보스 자동도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1200);
+    }
     if(B.eDead>0){B.eDead-=dt;if(B.eDead<=0)spawnEnemy(S.boss);}
     else{
       B.pTimer+=dt;B.eTimer+=dt;
@@ -375,7 +382,7 @@ function render(){
   if(B.pDead>0){ctx.save();ctx.translate(200,262);ctx.rotate(-Math.PI/2);ctx.globalAlpha=.6;drawSprite(SPR.knight,0,0,5,false,false);ctx.restore();}
   else drawSprite(SPR.knight,200+pl,262+bob,5,false,B.pFlash>0);
   // 적
-  if(B.eDead>0){ctx.save();ctx.globalAlpha=B.eDead/0.8;const sc=(boss?8:5)*(0.6+B.eDead/0.8*0.4);drawSprite(B.eSprite,590,262,sc,true,true);ctx.restore();}
+  if(B.eDead>0){ctx.save();ctx.globalAlpha=B.eDead/RESPAWN;const sc=(boss?8:5)*(0.6+B.eDead/RESPAWN*0.4);drawSprite(B.eSprite,590,262,sc,true,true);ctx.restore();}
   else{const ebob=Math.sin(B.t*3+1)*3;const el=B.eLunge>0?Math.sin(B.eLunge/0.25*Math.PI)*60:0;drawSprite(B.eSprite,590-el,262+ebob,boss?8:5,true,B.eFlash>0);}
   // 플로팅 텍스트
   for(const f of B.floats){ctx.globalAlpha=Math.max(0,f.life);ctx.font='900 '+f.size+'px sans-serif';ctx.fillStyle='#000';ctx.fillText(f.text,f.x+2,f.y+2);ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y);}
@@ -411,6 +418,8 @@ function updateUI(){
   if(S.boss||B.eBoss){bb.textContent='보스전 포기 (일반 전투로)';bb.classList.add('cancel');}
   else{bb.textContent='👹 보스 도전  (스테이지 '+s+')';bb.classList.remove('cancel');}
   bb.disabled=B.pDead>0;
+  const ab=$('autoBossBtn');ab.classList.toggle('on',S.autoBoss);
+  ab.textContent='🔁 보스 자동도전: '+(S.autoBoss?(B.autoPaused?'ON (일반 적 1마리 처치 후 재도전)':'ON'):'OFF');
   $('prevStage').disabled=s<=1;$('nextStage').disabled=!S.clearedBoss[s];
   $('mAtkCur').textContent='→ 공격력 '+fmt(baseAtk())+' × '+S.mult.atk+' = '+fmt(atk());
   $('mSpdCur').textContent='→ 공격속도 '+baseSpd().toFixed(2)+' × '+S.mult.spd+' = '+aps().toFixed(2)+'회/초 (DPS '+fmt(atk()*aps())+')';
@@ -423,13 +432,27 @@ function buy(kind,times){
   for(let i=0;i<times;i++){const c=cost();if(S.gold<c)break;S.gold-=c;S.lv[kind]++;n++;}
   if(n>0){if(kind==='hp'){/* 최대체력 상승분만큼 현재체력도 증가 */S.pHp=Math.min(maxHp(),S.pHp+25*S.mult.hp*n);}save();}
 }
-$('buyAtk').onclick=()=>buy('atk',1);$('buySpd').onclick=()=>buy('spd',1);$('buySpd10').onclick=()=>buy('spd',10);$('buyHp').onclick=()=>buy('hp',1);$('buyReg').onclick=()=>buy('reg',1);
-$('buyAtk10').onclick=()=>buy('atk',10);$('buyHp10').onclick=()=>buy('hp',10);$('buyReg10').onclick=()=>buy('reg',10);
+// 꾹 누르면 연속 강화 (점점 빨라짐)
+function holdBuy(id,kind,times){
+  const el=$(id);let timer=null,started=0;
+  const stop=()=>{if(timer){clearTimeout(timer);timer=null;}};
+  const tick=()=>{buy(kind,times);const held=performance.now()-started;
+    const delay=held<400?250:held<1500?90:held<3000?40:16; // 누를수록 가속
+    timer=setTimeout(tick,delay);};
+  el.addEventListener('pointerdown',e=>{if(e.button!==undefined&&e.button!==0)return;e.preventDefault();stop();started=performance.now();tick();});
+  ['pointerup','pointerleave','pointercancel','blur'].forEach(ev=>el.addEventListener(ev,stop));
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('click',e=>e.preventDefault()); // pointerdown에서 이미 처리
+}
+holdBuy('buyAtk','atk',1);holdBuy('buySpd','spd',1);holdBuy('buyHp','hp',1);holdBuy('buyReg','reg',1);
+holdBuy('buyAtk10','atk',10);holdBuy('buySpd10','spd',10);holdBuy('buyHp10','hp',10);holdBuy('buyReg10','reg',10);
+window.addEventListener('pointerup',()=>document.querySelectorAll('.buy,.row button').forEach(b=>b.dispatchEvent(new Event('pointerup'))));
 $('bossBtn').onclick=()=>{
   if(B.pDead>0)return;
   if(S.boss||B.eBoss){S.boss=false;spawnEnemy(false);log('보스전 포기');}
   else{S.boss=true;spawnEnemy(true);log('<span class="b">보스 도전!</span> 스테이지 '+S.stage);banner('👹 보스 등장!',1500);}
 };
+$('autoBossBtn').onclick=()=>{S.autoBoss=!S.autoBoss;B.autoPaused=false;save();log('보스 자동도전 '+(S.autoBoss?'<span class="c">ON</span>':'OFF'));};
 $('prevStage').onclick=()=>{if(S.stage>1){S.stage--;S.boss=false;spawnEnemy(false);save();}};
 $('nextStage').onclick=()=>{if(S.clearedBoss[S.stage]){S.stage++;S.boss=false;spawnEnemy(false);save();}};
 
